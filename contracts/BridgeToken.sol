@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-contract Play2Burn is Context, IERC20, Ownable {
+contract BridgeToken is Context, IERC20, Ownable {
     using SafeMath for uint256;
     using Address for address;
 
@@ -26,8 +26,8 @@ contract Play2Burn is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private _name = "Play2Burn";
-    string private _symbol = "P2B";
+    string private _name = "Bridge Token";
+    string private _symbol = "BDGK";
     uint8 private _decimals = 9;
 
     struct TradeFee {
@@ -58,9 +58,9 @@ contract Play2Burn is Context, IERC20, Ownable {
     address public uniswapV2Pair;
 
     address public _charityWallet =
-        payable(address(0xBa0cFfa69A87b8Bae5C6b35FB6dA26B1ebF61a05));
+        payable(address(0x123));
     address public _useWallet =
-        payable(address(0xEa338fe57024F2d463E8991d4A4223e5A3E847ac));
+        payable(address(0x456));
 
     bool internal inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = true;
