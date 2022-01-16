@@ -39,7 +39,7 @@ contract BridgeBsc is Ownable {
     );
   }
 
-  function mint(
+  function process(
     address from, 
     address to, 
     uint amount, 

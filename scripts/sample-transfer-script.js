@@ -1,13 +1,13 @@
-const BridgeBSC = artifacts.require('./BridgeBsc.sol');
-const BridgeToken = artifacts.require('./BridgeToken.sol');
-const privKey = 'priv key of sender';
+const BridgeBSC = artifacts.require('BridgeBsc');
+const BridgeToken = artifacts.require('BridgeTokenBsc');
+const privKey = '';
 
 module.exports = async done => {
-  const nonce = 1; //Need to increment this for each new transfer
+  const nonce = 4; //Need to increment this for each new transfer
   const accounts = await web3.eth.getAccounts();
   const bridgeBsc = await BridgeBSC.deployed();
   const token = await BridgeToken.deployed();
-  const amount = 1000;
+  const amount = 10000;
   const message = web3.utils.soliditySha3(
     {t: 'address', v: accounts[0]},
     {t: 'address', v: accounts[0]},
@@ -18,8 +18,7 @@ module.exports = async done => {
     message, 
     privKey
   ); 
-  await token.approve(bridgeBsc.address);
+  await token.approve(bridgeBsc.address,1e10);
   await bridgeBsc.deposit(accounts[0], amount, nonce, signature);
-  nonce++;
   done();
 }

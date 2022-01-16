@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-contract BridgeToken is Context, IERC20, Ownable {
+contract BridgeTokenMatic is Context, IERC20, Ownable {
     using SafeMath for uint256;
     using Address for address;
 
@@ -107,7 +107,7 @@ contract BridgeToken is Context, IERC20, Ownable {
         transferFee.taxFee = 100;
 
         IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(
-            0x10ED43C718714eb63d5aA57B78B54704E256024E
+            0x8954AfA98594b838bda56FE4C12a09D7739D179b
         );
         // Create a uniswap pair for this new token
         uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())

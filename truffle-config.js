@@ -87,5 +87,6 @@ module.exports = {
   api_keys: {
     etherscan: process.env.ETHERAPI, // Add  API key
     bscscan: process.env.BSCSCAN,
+    polygonscan: process.env.POLYGONSCAN,
   },
 };
