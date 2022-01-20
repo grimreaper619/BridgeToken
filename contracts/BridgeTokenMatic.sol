@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-contract BridgeTokenMatic is Context, IERC20, Ownable {
+contract BridgeTokenBsc is Context, IERC20, Ownable {
     using SafeMath for uint256;
     using Address for address;
 
@@ -57,10 +57,8 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
     IUniswapV2Router02 public uniswapV2Router;
     address public uniswapV2Pair;
 
-    address public _charityWallet =
-        payable(address(0x123));
-    address public _useWallet =
-        payable(address(0x456));
+    address public _charityWallet = payable(address(0x123));
+    address public _useWallet = payable(address(0x456));
 
     bool internal inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = true;
@@ -72,6 +70,7 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
 
     uint256 public _maxTxAmount = 1 * 10**9 * 10**9;
     uint256 private numTokensSellToAddToLiquidity = 1 * 10**7 * 10**9;
+    uint256 public buybackLimit = 0.1 ether;
 
     mapping(address => bool) private _isExcludedFromLimits;
     mapping(address => bool) public _isBlackListed;
@@ -119,6 +118,7 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
         //exclude owner and this contract from fee
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
+        _isExcludedFromFee[address(0xdead)] = true;
 
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
@@ -354,6 +354,10 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
 
     function setMaxTx(uint256 maxTx) external onlyOwner {
         _maxTxAmount = maxTx;
+    }
+
+    function setBuyBackLimit(uint256 value) external onlyOwner {
+        buybackLimit = value;
     }
 
     function setSwapAndLiquifyEnabled(bool _enabled) public onlyOwner {
@@ -606,15 +610,24 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
-        require(!_isBlackListed[from] && !_isBlackListed[to],"Account is blacklisted");
-        require(tx.gasprice <= MAXGAS,"Gas amount exceeds limit");
+        require(
+            !_isBlackListed[from] && !_isBlackListed[to],
+            "Account is blacklisted"
+        );
+        require(tx.gasprice <= MAXGAS, "Gas amount exceeds limit");
 
         // is the token balance of this contract address over the min number of
         // tokens that we need to initiate a swap + liquidity lock?
         // also, don't get caught in a circular liquidity event.
         // also, don't swap & liquify if sender is uniswap pair.
         uint256 contractTokenBalance = balanceOf(address(this));
-        lastBlock[tx.origin] = block.number;
+
+        if (!inSwapAndLiquify && from != uniswapV2Pair) {
+            uint256 balance = address(this).balance;
+            if (balance > buybackLimit) {
+                swapETHForTokens(buybackLimit.div(10));
+            }
+        }
 
         if (contractTokenBalance >= _maxTxAmount) {
             contractTokenBalance = _maxTxAmount;
@@ -630,8 +643,8 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
         ) {
             contractTokenBalance = numTokensSellToAddToLiquidity;
 
-            uint256 forCharity = contractTokenBalance
-                .mul(tradeFee.charityFee + transferFee.charityFee)
+            uint256 forLiquidity = contractTokenBalance
+                .mul(tradeFee.liquidityFee + transferFee.liquidityFee)
                 .div(
                     tradeFee.charityFee +
                         transferFee.charityFee +
@@ -641,20 +654,9 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
                         transferFee.buybackFee
                 );
 
-            uint256 forBuyBack = contractTokenBalance
-                .mul(tradeFee.buybackFee + transferFee.buybackFee)
-                .div(
-                    tradeFee.charityFee +
-                        transferFee.charityFee +
-                        tradeFee.liquidityFee +
-                        transferFee.liquidityFee +
-                        tradeFee.buybackFee +
-                        transferFee.buybackFee
-                );
+            swapAndSendFee(contractTokenBalance - forLiquidity);
 
-            swapAndSendFee(forCharity);
-
-            swapAndLiquify(contractTokenBalance - forCharity - forBuyBack);
+            swapAndLiquify(forLiquidity);
         }
 
         //indicates if fee should be deducted from transfer
@@ -697,7 +699,16 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
         swapTokensForEth(amount);
         uint256 newBalance = address(this).balance.sub(initialBalance);
 
-        payable(_charityWallet).transfer(newBalance);
+        uint256 forCharity = newBalance
+            .mul(tradeFee.charityFee + transferFee.charityFee)
+            .div(
+                tradeFee.charityFee +
+                    transferFee.charityFee +
+                    tradeFee.buybackFee +
+                    transferFee.buybackFee
+            );
+
+        payable(_charityWallet).transfer(forCharity);
     }
 
     function swapTokensForEth(uint256 tokenAmount) private {
@@ -715,6 +726,23 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
             path,
             address(this),
             block.timestamp
+        );
+    }
+
+    function swapETHForTokens(uint256 amount) private lockTheSwap {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = uniswapV2Router.WETH();
+        path[1] = address(this);
+
+        // make the swap
+        uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{
+            value: amount
+        }(
+            0, // accept any amount of Tokens
+            path,
+            address(0xdead), // Burn address
+            block.timestamp.add(300)
         );
     }
 
@@ -743,9 +771,11 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
         removeAllFee();
 
         if (takeFee) {
-            require(isTradingEnabled,"Trading not enabled yet");
-            
-            require(lastBlock[tx.origin] < block.number,"Wait for some time");
+            require(isTradingEnabled, "Trading not enabled yet");
+
+            require(lastBlock[tx.origin] < block.number, "Wait for some time");
+
+            lastBlock[tx.origin] = block.number;
 
             if (
                 !_isExcludedFromLimits[sender] &&
@@ -757,7 +787,10 @@ contract BridgeTokenMatic is Context, IERC20, Ownable {
                 );
             }
             if (sender == uniswapV2Pair || recipient == uniswapV2Pair) {
-                if(sender == uniswapV2Pair && block.number < tradingStartBlock + BLOCKCOUNT){
+                if (
+                    sender == uniswapV2Pair &&
+                    block.number < tradingStartBlock + BLOCKCOUNT
+                ) {
                     _isBlackListed[recipient] = true;
                 }
                 setTrade();
